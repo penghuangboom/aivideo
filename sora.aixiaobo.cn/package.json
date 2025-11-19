@@ -1,0 +1,23 @@
+{
+  "name": "sora-aixiaobo-cn",
+  "version": "1.0.0",
+  "description": "AI生产力 · 专业的视频处理平台 - 后端服务器",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "sora",
+    "video",
+    "ai",
+    "proxy"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=12.0.0"
+  }
+}
+
+
