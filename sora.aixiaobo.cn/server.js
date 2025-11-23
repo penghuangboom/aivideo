@@ -4,18 +4,13 @@ const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 
-// ================= 配置区域 (Kie AI) =================
+// ================= 配置区域 =================
 const CONFIG = {
-    // 务必填入你的 Key
     apiKey: 'd8312697c954d844f4385c26a94c996a' || "YOUR_API_KEY_HERE", 
-    
-    // Kie AI 基础地址
     baseUrl: "https://api.kie.ai/api/v1",
-    
-    // 模型名称
-    model: "sora-2-text-to-video"
+    adminUser: "admin" 
 };
-// ===================================================
+// ===========================================
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,220 +20,195 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
-app.use('/assets', express.static(path.join(__dirname, 'sora.aixiaobo.cn/assets')));
-app.use('/ims', express.static(path.join(__dirname, 'sora.aixiaobo.cn/ims')));
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 // --- 数据库工具 ---
 function readDb() {
     try {
-        if (!fs.existsSync(DB_FILE)) return { users: [], tasks: [], tokens: [] };
-        return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    } catch (e) { console.error(e); return {}; }
+        if (!fs.existsSync(DB_FILE)) {
+            const defaultDb = { 
+                users: [{
+                    id: 1, username: "admin", password: "123456", 
+                    group: "svip", balance: 999999, created_at: Date.now()
+                }], 
+                tasks: [] 
+            };
+            fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2));
+            return defaultDb;
+        }
+        const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        if (!data.users) data.users = [];
+        if (!data.tasks) data.tasks = [];
+        return data;
+    } catch (e) { return { users: [], tasks: [] }; }
 }
 
 function writeDb(data) {
-    try { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); return true; } 
-    catch (e) { return false; }
+    try { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2)); } catch(e){}
 }
 
-// --- 辅助函数：通用 API 调用 ---
-async function callRemoteApi(endpoint, method, body = null) {
-    const url = `${CONFIG.baseUrl}${endpoint}`;
-    const headers = {
-        'Authorization': `Bearer ${CONFIG.apiKey}`,
-        'Content-Type': 'application/json'
-    };
+// --- 鉴权核心 (支持 Header 和 Cookie) ---
+function getUserFromRequest(req) {
+    let token = req.headers['authorization']?.replace('Bearer ', '');
     
-    // 简单的日志，避免打印敏感 Key
-    console.log(`[Remote API] ${method} ${url}`);
-    
-    try {
-        const options = { method, headers };
-        if (body) options.body = JSON.stringify(body);
-        
-        const response = await fetch(url, options);
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(`HTTP Error ${response.status}: ${JSON.stringify(data)}`);
-        }
-        return data;
-    } catch (error) {
-        console.error("[Remote API Error]", error.message);
-        throw error;
+    // 1. 如果 Header 没带，尝试从 Cookie 获取
+    if (!token && req.headers.cookie) {
+        const match = req.headers.cookie.match(/auth_token=([^;]+)/);
+        if (match) token = match[1];
     }
+
+    // 2. 还是没有？尝试从 new-api-user (前端存的ID) 获取
+    if (!token && req.headers.cookie) {
+        const matchId = req.headers.cookie.match(/new-api-user=([^;]+)/);
+        if (matchId) token = "mock-token-" + matchId[1];
+    }
+
+    console.log(`🔍 [AuthCheck] 提取 Token: ${token || '无'}`);
+
+    if (token && token.includes('mock-token-')) {
+        const db = readDb();
+        const match = token.match(/mock-token-(\d+)/);
+        if (match && match[1]) {
+            return db.users.find(u => String(u.id) === match[1]);
+        }
+    }
+    return null;
 }
 
-// --- 路由定义 ---
+// --- 代理请求 ---
+async function proxyRequest(endpoint, method, body, req) {
+    const currentUser = getUserFromRequest(req);
+    let userProvidedKey = req.headers['authorization']?.replace('Bearer ', '');
+    
+    // 如果 Authorization 是 mock-token，说明不是真实 Key，清空它
+    if (userProvidedKey && userProvidedKey.includes('mock-token')) userProvidedKey = null;
 
-// 1. 状态检查
-app.get(['/api/status', '/config'], (req, res) => {
-    const db = readDb();
-    res.json({ success: true, data: db.system_status || {} });
+    let finalKey = userProvidedKey;
+
+    // 权限判断
+    if (!finalKey) {
+        if (currentUser && currentUser.username === CONFIG.adminUser) {
+            console.log(`[Auth] 管理员 ${currentUser.username} 免 Key 模式`);
+            finalKey = CONFIG.apiKey;
+        } 
+    }
+
+    if (!finalKey || finalKey === "YOUR_API_KEY_HERE") {
+        throw new Error("权限不足：普通用户需自备 API Key (仅管理员可免输)");
+    }
+
+    const res = await fetch(`${CONFIG.baseUrl}${endpoint}`, {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${finalKey}`
+        },
+        body: body ? JSON.stringify(body) : undefined
+    });
+    return await res.json();
+}
+
+// --- 中间件 ---
+app.use((req, res, next) => {
+    if (req.url.includes('watermark') || req.url.includes('Watermark') || req.url.includes('remove')) {
+        if(!req.url.includes('remove_watermark')) { 
+             return res.status(403).json({ code: 403, msg: "该功能已下线" });
+        }
+    }
+    next();
 });
 
-// 2. 登录
+// ================= 路由定义 =================
+
+// 1. 注册
+app.post('/api/user/register', (req, res) => {
+    const { username, password } = req.body;
+    const db = readDb();
+    if (db.users.find(u => u.username === username)) return res.json({ success: false, message: "账号已存在" });
+
+    const newUser = {
+        id: Date.now(), username, password, group: "vip", balance: 0, created_at: Date.now()
+    };
+    db.users.push(newUser);
+    writeDb(db);
+    res.json({ success: true, message: "注册成功" });
+});
+
+// 2. 登录 (写入 Cookie)
 app.post('/api/user/login', (req, res) => {
     const { username, password } = req.body;
     const db = readDb();
-    const user = db.users.find(u => u.username === username && u.password === password);
-    if (user) {
-        res.json({ success: true, data: { token: "mock-token-" + user.id, ...user } });
-    } else {
-        res.json({ success: false, message: "账号或密码错误" });
+    
+    if (username === 'admin' && !db.users.find(u => u.username === 'admin')) {
+         db.users.push({ id: 1, username: "admin", password: "123456", group: "svip", balance: 99999 });
+         writeDb(db);
     }
+
+    const user = db.users.find(u => u.username === username);
+    if (!user) return res.json({ success: false, message: "账号不存在" });
+    if (String(user.password).trim() !== String(password).trim()) return res.json({ success: false, message: "密码错误" });
+
+    const token = "mock-token-" + user.id;
+    console.log(`✅ 登录成功: ${username} | Token: ${token}`);
+
+    // 【核心】主动设置 Cookie，防止前端不存 Token
+    res.cookie('auth_token', token, { maxAge: 90000000, httpOnly: false });
+    res.cookie('new-api-user', user.id, { maxAge: 90000000, httpOnly: false });
+
+    res.json({ success: true, data: { token, ...user } });
 });
 
+// 3. 用户信息
 app.get('/api/user/self', (req, res) => {
-    const db = readDb();
-    res.json({ success: true, data: db.users[0] });
+    const user = getUserFromRequest(req);
+    if (user) {
+        console.log(`👤 [Self] 认证通过: ${user.username}`);
+        return res.json({ success: true, data: user });
+    }
+    console.log(`⚠️ [Self] 认证失败`);
+    res.status(401).json({ success: false, message: "未登录" });
 });
 
-// 3. 视频生成接口 (/jobs/createTask)
-app.post('/v1/videos', async (req, res) => {
-    const db = readDb();
-    const userPrompt = req.body.prompt;
-
-    if (!CONFIG.apiKey || CONFIG.apiKey === "YOUR_API_KEY_HERE") {
-        return res.status(500).json({ success: false, message: "请配置 API Key" });
-    }
-
-    console.log("收到生成请求:", userPrompt);
-
+// 4. 业务接口
+app.post('/jobs/createTask', async (req, res) => {
     try {
-        // 构造请求体
-        const requestBody = {
-            model: CONFIG.model,
-            input: {
-                prompt: userPrompt,
-                aspect_ratio: "landscape",
-                n_frames: "10",
-                remove_watermark: true
-            }
-        };
-
-        // 调用 API
-        const apiResult = await callRemoteApi('/jobs/createTask', 'POST', requestBody);
-        
-        // 检查返回
-        if (apiResult.code !== 200 || !apiResult.data?.taskId) {
-             throw new Error(apiResult.message || "任务创建失败：未返回 taskId");
+        const result = await proxyRequest('/jobs/createTask', 'POST', req.body, req);
+        if(result.code === 200 && result.data?.taskId) {
+            const db = readDb();
+            db.tasks.unshift({ id: result.data.taskId, status: 'processing', created_at: Date.now(), model: req.body.model });
+            writeDb(db);
         }
-
-        const remoteTaskId = apiResult.data.taskId;
-
-        // 存入本地数据库
-        const newTask = {
-            id: remoteTaskId,
-            local_created_at: Date.now(),
-            status: "processing",
-            prompt: userPrompt,
-            model: CONFIG.model,
-            result_url: "",
-            cover_url: ""
-        };
-
-        if (!db.tasks) db.tasks = [];
-        db.tasks.unshift(newTask);
-        writeDb(db);
-
-        res.json({ success: true, data: newTask });
-
-    } catch (error) {
-        console.error("生成接口报错:", error);
-        res.status(500).json({ 
-            success: false, 
-            message: "调用服务失败: " + error.message 
-        });
-    }
+        res.json(result);
+    } catch (e) { res.status(500).json({ code: 500, msg: e.message }); }
 });
 
-// 4. 任务列表 & 自动轮询状态 (适配 /jobs/recordInfo)
-app.get('/api/task/self', async (req, res) => {
-    let db = readDb();
-    let tasks = db.tasks || [];
-    let hasUpdates = false;
-
-    // 筛选出“未完成”的任务进行查询
-    const pendingTasks = tasks.filter(t => 
-        !['succeeded', 'failed'].includes(t.status)
-    );
-
-    if (pendingTasks.length > 0 && CONFIG.apiKey !== "YOUR_API_KEY_HERE") {
-        console.log(`正在同步 ${pendingTasks.length} 个任务的状态...`);
-        
-        for (const task of pendingTasks) {
-            try {
-                // === 核心修改：使用 recordInfo 接口查询 ===
-                const remoteData = await callRemoteApi(`/jobs/recordInfo?taskId=${task.id}`, 'GET');
-                
-                // 确保请求成功
-                if (remoteData.code === 200 && remoteData.data) {
-                    const serverState = remoteData.data.state; // "success", "doing"?, "fail"?
-
-                    // 映射状态
-                    // Kie AI: "success" -> 本地: "succeeded"
-                    if (serverState === 'success') {
-                        task.status = 'succeeded';
-                        hasUpdates = true;
-
-                        // === 核心修改：解析 string 类型的 resultJson ===
-                        if (remoteData.data.resultJson) {
-                            try {
-                                const parsedResult = JSON.parse(remoteData.data.resultJson);
-                                // 提取视频地址
-                                if (parsedResult.resultUrls && parsedResult.resultUrls.length > 0) {
-                                    task.result_url = parsedResult.resultUrls[0];
-                                    // 如果没有专门的封面，就用视频地址或默认图
-                                    task.cover_url = task.result_url; 
-                                }
-                            } catch (parseErr) {
-                                console.error(`解析 resultJson 失败 Task ${task.id}:`, parseErr);
-                            }
-                        }
-                    } else if (serverState === 'fail' || serverState === 'failed') {
-                        task.status = 'failed';
-                        task.error = remoteData.data.failMsg || "生成失败";
-                        hasUpdates = true;
-                    }
-                    // 如果是其他状态 (如 "doing", "queue")，保持 "processing" 不变
-                }
-            } catch (err) {
-                console.error(`同步任务 ${task.id} 失败:`, err.message);
-            }
-        }
-    }
-
-    if (hasUpdates) writeDb(db);
-
-    res.json({
-        success: true,
-        data: {
-            page: 1,
-            page_size: 100,
-            total: tasks.length,
-            items: tasks
-        }
-    });
+app.get('/jobs/recordInfo', async (req, res) => {
+    try {
+        const result = await proxyRequest(`/jobs/recordInfo?taskId=${req.query.taskId}`, 'GET', null, req);
+        res.json(result);
+    } catch (e) { res.status(500).json({ code: 500, msg: e.message }); }
 });
 
-app.get('/api/token/index', (req, res) => {
-    const db = readDb();
-    res.json({ success: true, data: { page: 1, total: 1, items: db.tokens } });
+app.get('/chat/credit', async (req, res) => {
+    try {
+        const result = await proxyRequest('/chat/credit', 'GET', null, req);
+        res.json(result);
+    } catch (e) { res.status(500).json({ code: 500, msg: e.message }); }
 });
 
-// 兜底路由
+app.get(['/studio', '/studio.html'], (req, res) => {
+    if (fs.existsSync(path.join(__dirname, 'studio.html'))) res.sendFile(path.join(__dirname, 'studio.html'));
+    else res.status(404).send('Missing studio.html');
+});
+
+app.get(['/api/status', '/config'], (req, res) => res.json({ success: true, data: { status: "ok" } }));
+
 app.get(/(.*)/, (req, res) => {
-    const indexPaths = [
-        path.join(__dirname, 'index.html'),
-        path.join(__dirname, 'sora.aixiaobo.cn', 'index.html')
-    ];
-    for (const p of indexPaths) {
-        if (fs.existsSync(p)) return res.sendFile(p);
+    if (req.path.endsWith('.html')) {
+        const fp = path.join(__dirname, req.path);
+        if (fs.existsSync(fp)) return res.sendFile(fp);
     }
-    res.status(404).send('Index not found');
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`Kie AI 适配版服务器运行中: http://localhost:${PORT}`);
-});
+app.listen(PORT, () => { console.log(`🚀 Server: http://localhost:${PORT}`); });

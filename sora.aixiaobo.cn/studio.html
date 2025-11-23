@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sora Studio Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { indigo: { 50: '#eef2ff', 500: '#6366f1', 600: '#4f46e5' } } } } }
+    </script>
+    <style>
+        body { background-color: #f9fafb; }
+        body.embedded-mode { background-color: transparent; padding: 0; overflow-x: hidden; }
+        body.embedded-mode nav { display: none !important; }
+        body.embedded-mode main { padding: 10px !important; max-width: 100% !important; }
+        .progress-bar-transition { transition: width 0.5s ease-in-out; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    </style>
+</head>
+<body class="text-slate-800 font-sans flex flex-col min-h-screen">
+
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50 px-6 h-16 flex items-center justify-between shadow-sm">
+        <div class="font-bold text-xl text-gray-900 flex items-center gap-2">
+            <span class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center">S</span>
+            Sora Studio <span class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">Pro</span>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <div class="hidden sm:flex items-center gap-1 bg-yellow-50 text-yellow-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-yellow-200">
+                <span>💰 余额:</span>
+                <span id="credit-val">--</span>
+            </div>
+
+            <input type="password" id="api-key-input" placeholder="API Key (可选)" class="border rounded px-3 py-1.5 text-sm w-32 focus:w-48 transition-all outline-none focus:border-indigo-500" onchange="updateKey(this.value)">
+        </div>
+    </nav>
+
+    <main class="flex-1 w-full max-w-7xl mx-auto px-6 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+            
+            <div class="lg:col-span-7 flex flex-col gap-4 h-full">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex-shrink-0">
+                    <div class="flex border-b border-gray-100 bg-gray-50">
+                        <button onclick="switchTab('text')" id="tab-text" class="flex-1 py-3 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white">文生视频</button>
+                        <button onclick="switchTab('image')" id="tab-image" class="flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-white">图生视频</button>
+                    </div>
+                    <div class="p-5 space-y-4">
+                        <div class="flex justify-between items-center bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                            <div>
+                                <div class="text-sm font-bold text-gray-800" id="model-name">Sora 2 Text-to-Video</div>
+                                <div class="text-[10px] text-indigo-500 mt-0.5">预计消耗: <span id="est-cost" class="font-bold">30</span> 积分</div>
+                            </div>
+                            <button onclick="togglePro()" id="pro-btn" class="text-xs font-bold px-2 py-1 rounded bg-gray-200 text-gray-600 transition-all">启用 Pro</button>
+                        </div>
+
+                        <div id="img-upload" class="hidden border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50" onclick="document.getElementById('file').click()">
+                            <input type="file" id="file" hidden accept="image/*" onchange="handleFile(this)">
+                            <div id="upload-tip" class="text-xs text-gray-500">点击上传参考图</div>
+                            <img id="preview" class="hidden h-20 mx-auto object-contain mt-2">
+                        </div>
+
+                        <textarea id="prompt" rows="3" class="w-full p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="输入提示词..."></textarea>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs font-bold text-gray-500 uppercase">比例</label>
+                                <select id="ratio" class="w-full mt-1 p-2 text-sm border border-gray-300 rounded-lg outline-none">
+                                    <option value="landscape">16:9 横屏</option>
+                                    <option value="portrait">9:16 竖屏</option>
+                                </select>
+                            </div>
+                            <div id="quality-box" class="hidden">
+                                <label class="text-xs font-bold text-yellow-600 uppercase">画质 (Pro)</label>
+                                <select id="quality" class="w-full mt-1 p-2 text-sm border border-yellow-300 bg-yellow-50 rounded-lg text-yellow-900 outline-none">
+                                    <option value="standard">标准</option>
+                                    <option value="high">高清</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">时长</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button onclick="setDur(10)" id="d-10" class="py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white">10s</button>
+                                <button onclick="setDur(15)" id="d-15" class="py-2 text-xs font-bold rounded-lg border border-gray-300 text-gray-600">15s</button>
+                                <button onclick="setDur(25)" id="d-25" class="py-2 text-xs font-bold rounded-lg border border-gray-300 text-gray-600 relative overflow-hidden">25s <div class="absolute top-0 right-0 w-2 h-2 bg-yellow-400 rounded-full opacity-50"></div></button>
+                            </div>
+                        </div>
+
+                        <button onclick="submitTask()" id="submit-btn" class="w-full py-3 bg-gray-900 text-white font-bold rounded-lg hover:bg-gray-800 flex justify-center items-center gap-2 transition-transform active:scale-[0.99]">
+                            <span>开始生成</span>
+                            <div id="loading" class="hidden w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        </button>
+                        <div id="err-msg" class="text-center text-xs text-red-500 hidden"></div>
+                    </div>
+                </div>
+                <div class="bg-black rounded-xl p-4 text-green-400 font-mono text-xs h-32 overflow-y-auto flex-shrink-0" id="logs">
+                    <div class="opacity-50 mb-1">--- System Ready ---</div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-5 flex flex-col h-full">
+                <h3 class="text-sm font-bold text-gray-700 mb-3 flex justify-between">
+                    <span>历史记录</span>
+                    <span class="text-xs font-normal bg-gray-200 px-2 py-0.5 rounded text-gray-600 cursor-pointer hover:bg-red-100 hover:text-red-600" onclick="clearHistory()">清空</span>
+                </h3>
+                <div id="history-list" class="flex-1 overflow-y-auto space-y-3 pr-1 pb-4">
+                    </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = '';
+        // 费率表：Standard=30, Pro=60, 25s加收20
+        const COSTS = { standard: 30, pro: 60, extra: 20 };
+
+        let state = { 
+            mode: 'text', pro: false, dur: 10, img: null, 
+            history: JSON.parse(localStorage.getItem('studio_history')||'[]') 
+        };
+
+        function init() {
+            if (window.self !== window.top) document.body.classList.add('embedded-mode');
+            const k = localStorage.getItem('custom_api_key');
+            if(k) document.getElementById('api-key-input').value = k;
+            
+            checkCredits(); // 初始查余额
+            renderHistory();
+            updateCostDisplay();
+        }
+        
+        function updateKey(val) {
+            localStorage.setItem('custom_api_key', val);
+            checkCredits(); // Key 变了查余额
+        }
+
+        // === 1. 余额查询 ===
+        async function checkCredits() {
+            const key = document.getElementById('api-key-input').value;
+            const headers = {}; 
+            if(key) headers['Authorization'] = `Bearer ${key}`;
+            
+            try {
+                const res = await fetch(`${API_BASE}/chat/credit`, { headers });
+                const json = await res.json();
+                if(json.code === 200) {
+                    document.getElementById('credit-val').innerText = json.data;
+                }
+            } catch(e) { console.log("余额查询失败"); }
+        }
+
+        function log(m) { const l = document.getElementById('logs'); l.innerHTML += `<div>> ${m}</div>`; l.scrollTop = l.scrollHeight; }
+
+        function switchTab(m) {
+            state.mode = m;
+            document.getElementById('tab-text').className = m==='text' ? 'flex-1 py-3 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white' : 'flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-white';
+            document.getElementById('tab-image').className = m==='image' ? 'flex-1 py-3 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600 bg-white' : 'flex-1 py-3 text-sm font-medium text-gray-500 hover:bg-white';
+            document.getElementById('img-upload').className = m==='image' ? 'border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50' : 'hidden';
+            updateUI();
+        }
+
+        function togglePro() { state.pro = !state.pro; if(!state.pro && state.dur===25) state.dur=10; updateUI(); }
+        function setDur(d) { if(d===25 && !state.pro) { if(confirm('25s 需要 Pro 模式，是否开启？')) state.pro=true; else return; } state.dur=d; updateUI(); }
+
+        function updateCostDisplay() {
+            let base = state.pro ? COSTS.pro : COSTS.standard;
+            if(state.dur === 25) base += COSTS.extra;
+            document.getElementById('est-cost').innerText = base;
+        }
+
+        function updateUI() {
+            const btn = document.getElementById('pro-btn');
+            const qBox = document.getElementById('quality-box');
+            if (state.pro) {
+                btn.className = "text-xs font-bold px-2 py-1 rounded bg-indigo-600 text-white shadow-sm transition-all";
+                btn.innerText = "Pro 已开启";
+                qBox.classList.remove('hidden');
+            } else {
+                btn.className = "text-xs font-bold px-2 py-1 rounded bg-gray-200 text-gray-600 transition-all";
+                btn.innerText = "启用 Pro";
+                qBox.classList.add('hidden');
+            }
+            document.getElementById('model-name').innerText = `Sora 2 ${state.pro?'Pro':''} ${state.mode==='text'?'Text':'Image'}`;
+            [10,15,25].forEach(d => {
+                const el = document.getElementById(`d-${d}`);
+                const active = state.dur === d;
+                el.className = `py-2 text-xs font-bold rounded-lg transition-all relative overflow-hidden ${active ? 'bg-indigo-600 text-white shadow' : 'border border-gray-300 text-gray-600 bg-white'}`;
+                if(d===25 && !active) el.innerHTML = '25s <div class="absolute top-0 right-0 w-2 h-2 bg-yellow-400 rounded-full opacity-50"></div>';
+            });
+            updateCostDisplay();
+        }
+
+        function handleFile(input) {
+            const f = input.files[0]; if(!f) return;
+            const r = new FileReader();
+            r.onload = e => { state.img = e.target.result; document.getElementById('preview').src = state.img; document.getElementById('preview').classList.remove('hidden'); document.getElementById('upload-tip').classList.add('hidden'); };
+            r.readAsDataURL(f);
+        }
+
+        async function submitTask() {
+            const btn = document.getElementById('submit-btn');
+            const load = document.getElementById('loading');
+            const err = document.getElementById('err-msg');
+            const key = document.getElementById('api-key-input').value;
+            const promptVal = document.getElementById('prompt').value || "A movie scene";
+            
+            // 计算预估消耗
+            let estCost = state.pro ? COSTS.pro : COSTS.standard;
+            if(state.dur === 25) estCost += COSTS.extra;
+
+            btn.disabled = true; load.classList.remove('hidden'); err.classList.add('hidden');
+
+            try {
+                let model = `sora-2-${state.pro?'pro-':''}${state.mode==='text'?'text-to-video':'image-to-video'}`;
+                let payload = { model, input: { prompt: promptVal, n_frames: state.dur.toString(), aspect_ratio: document.getElementById('ratio').value, remove_watermark: true } };
+                if(state.pro) payload.input.size = document.getElementById('quality').value;
+                if(state.mode==='image') { if(!state.img) throw new Error("请上传图片"); payload.input.image_urls = [state.img]; }
+                
+                log(`提交任务... ${model}`);
+                const headers = { 'Content-Type': 'application/json' }; if(key) headers['Authorization'] = `Bearer ${key}`;
+                const res = await fetch(`${API_BASE}/jobs/createTask`, { method: 'POST', headers, body: JSON.stringify(payload) });
+                const json = await res.json();
+                if(json.code !== 200) throw new Error(json.msg || "API Error");
+                
+                const id = json.data.taskId;
+                log(`成功: ${id}`);
+                
+                // === 记录更多信息 ===
+                const task = { 
+                    id, model, status: 'processing', progress: 0, 
+                    time: Date.now(), 
+                    prompt: promptVal, // 保存提示词
+                    cost: estCost      // 保存费用
+                };
+                
+                state.history.unshift(task);
+                localStorage.setItem('studio_history', JSON.stringify(state.history));
+                renderHistory();
+                poll(id, key);
+                
+                setTimeout(checkCredits, 2000); // 提交后刷新余额
+
+            } catch(e) { err.innerText = e.message; err.classList.remove('hidden'); log(`错误: ${e.message}`); } finally { btn.disabled = false; load.classList.add('hidden'); }
+        }
+
+        function poll(id, key) {
+            const interval = setInterval(async () => {
+                try {
+                    const headers = {}; if(key) headers['Authorization'] = `Bearer ${key}`;
+                    const res = await fetch(`${API_BASE}/jobs/recordInfo?taskId=${id}`, { headers });
+                    const d = await res.json();
+                    if(d.code===200) {
+                        const s = (d.data.state||'').toLowerCase();
+                        const p = d.data.progress || 0;
+                        updateCard(id, s, p);
+                        if(s==='success' || s.includes('fail')) {
+                            clearInterval(interval);
+                            let url = ''; if(s==='success') try { url = JSON.parse(d.data.resultJson).resultUrls[0]; } catch(e){}
+                            updateHistoryState(id, s, url);
+                            checkCredits(); // 完成后再次刷新余额
+                        }
+                    }
+                } catch(e){}
+            }, 3000);
+        }
+
+        // === 2. 升级版历史记录渲染 ===
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            list.innerHTML = state.history.map(t => `
+                <div id="card-${t.id}" class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm transition-all">
+                    <div class="flex justify-between mb-2 items-center">
+                        <span class="text-xs font-bold text-gray-500 truncate w-32">${t.model}</span>
+                        <span id="status-text-${t.id}" class="text-[10px] px-2 py-0.5 rounded-full font-bold ${getBadgeClass(t.status)}">${formatStatus(t.status)}</span>
+                    </div>
+                    
+                    <div class="mb-3 border-b border-gray-50 pb-2">
+                        <div class="text-xs text-gray-600 line-clamp-2" title="${t.prompt || ''}">📝 ${t.prompt || '无提示词'}</div>
+                        <div class="flex justify-between mt-2 text-[10px] text-gray-400">
+                            <span>🕒 ${new Date(t.time).toLocaleString()}</span>
+                            <span class="font-bold text-indigo-600">-${t.cost || 30} 积分</span>
+                        </div>
+                    </div>
+
+                    <div id="content-${t.id}" class="relative h-36 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden border border-gray-100">
+                        ${getContentHtml(t)}
+                    </div>
+                </div>
+            `).join('');
+            state.history.filter(t => t.status==='processing').forEach(t => poll(t.id, document.getElementById('api-key-input').value));
+        }
+
+        function getBadgeClass(s) {
+            if(s==='success') return 'bg-green-100 text-green-700';
+            if(s==='processing') return 'bg-blue-50 text-blue-600';
+            return 'bg-red-50 text-red-600';
+        }
+
+        function formatStatus(s) {
+            if(s === 'processing') return '生成中...';
+            if(s === 'success') return '完成';
+            return '失败';
+        }
+
+        function getContentHtml(t) {
+            if(t.status==='processing') {
+                const p = t.progress || 0;
+                return `
+                    <div class="w-full px-6 text-center">
+                        <div class="text-indigo-600 font-bold text-lg mb-2" id="percent-${t.id}">${p}%</div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                            <div id="bar-${t.id}" class="bg-indigo-600 h-2 rounded-full progress-bar-transition" style="width: ${p}%"></div>
+                        </div>
+                        <div class="text-xs text-gray-400 mt-2">正在渲染视频...</div>
+                    </div>
+                `;
+            }
+            if(t.status==='success') return `<video src="${t.url}" controls class="w-full h-full object-contain bg-black" preload="metadata"></video>`;
+            return '<span class="text-xs text-red-400">任务失败</span>';
+        }
+
+        function updateCard(id, status, progress) {
+            const bar = document.getElementById(`bar-${id}`);
+            const percent = document.getElementById(`percent-${id}`);
+            if (status === 'processing') {
+                if (bar) bar.style.width = `${progress}%`;
+                if (percent) percent.innerText = `${progress}%`;
+                const idx = state.history.findIndex(t => t.id === id);
+                if(idx!==-1) state.history[idx].progress = progress;
+            }
+        }
+
+        function updateHistoryState(id, status, url) {
+            const idx = state.history.findIndex(t => t.id === id);
+            if(idx!==-1) {
+                state.history[idx].status = status;
+                state.history[idx].url = url;
+                localStorage.setItem('studio_history', JSON.stringify(state.history));
+                renderHistory();
+            }
+        }
+
+        function clearHistory() {
+            if(confirm('清空记录？')) { state.history = []; localStorage.setItem('studio_history', '[]'); renderHistory(); }
+        }
+
+        init();
+    </script>
+</body>
+</html>

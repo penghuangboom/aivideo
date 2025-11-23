@@ -4,16 +4,202 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/ims/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="description" content="AI生产力 · 专业的视频处理平台 - 让视频创作更高效，AI视频生成、智能去水印，基于AI生产力平台" />
-    <meta name="keywords" content="AI生产力,视频生产力,AI视频,去水印,Sora2,视频生成,生产力工具" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="format-detection" content="telephone=no" />
     <title>AI生产力 · 专业的视频处理平台</title>
+    
+    <script>
+    (function() {
+        // 1. 保存 Token 的工具函数
+        function saveToken(token) {
+            if(!token) return;
+            localStorage.setItem('sora_auth_token', token);
+            document.cookie = `auth_token=${token}; path=/; max-age=86400`;
+        }
+
+        // 2. 获取 Token 的工具函数
+        function getToken() {
+            // 优先从 localStorage 拿
+            let t = localStorage.getItem('sora_auth_token');
+            // 没有就从 Cookie 拿
+            if (!t) {
+                const match = document.cookie.match(/auth_token=([^;]+)/);
+                if(match) t = match[1];
+            }
+            // 还没有？看看原有的 new-api-user
+            if (!t) {
+                const userId = localStorage.getItem('new-api-user');
+                if(userId) t = 'mock-token-' + userId;
+            }
+            return t;
+        }
+
+        // 3. 拦截 XMLHttpRequest (Vue Axios 底层)
+        const originalOpen = XMLHttpRequest.prototype.open;
+        const originalSend = XMLHttpRequest.prototype.send;
+
+        XMLHttpRequest.prototype.open = function(method, url) {
+            this._url = url; // 记录 URL
+            return originalOpen.apply(this, arguments);
+        };
+
+        XMLHttpRequest.prototype.send = function(body) {
+            // 如果是发给 API 的请求，且不是登录/注册，就注入 Token
+            if (this._url && this._url.includes('/api/') && !this._url.includes('login') && !this._url.includes('register')) {
+                const token = getToken();
+                if (token) {
+                    this.setRequestHeader('Authorization', token);
+                }
+            }
+
+            // 监听响应：如果是登录接口，且成功了，就抓取 Token
+            this.addEventListener('load', function() {
+                if (this._url && this._url.includes('/api/user/login')) {
+                    try {
+                        const res = JSON.parse(this.responseText);
+                        if (res.success && res.data && res.data.token) {
+                            console.log("🔓 拦截器捕获登录 Token:", res.data.token);
+                            saveToken(res.data.token);
+                        }
+                    } catch(e) {}
+                }
+            });
+
+            return originalSend.apply(this, arguments);
+        };
+    })();
+    </script>
+
     <script type="module" crossorigin src="/assets/index-InSkuxQ1.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-DGGAWGGh.css">
+    <style>
+        .hidden-feature { display: none !important; }
+        .sora-pro-sidebar-item {
+            display: flex; align-items: center; height: 50px; line-height: 50px; padding: 0 20px;
+            cursor: pointer; color: #303133; font-size: 14px; font-weight: 500; margin-bottom: 5px;
+            transition: 0.2s; border-radius: 4px;
+        }
+        .sora-pro-sidebar-item:hover { background-color: #ecf5ff; }
+        .sora-pro-sidebar-item.active {
+            color: #6366f1 !important; background-color: #eef2ff !important; border-right: 3px solid #6366f1; font-weight: 700;
+        }
+        #sora-pro-view-container { display: none; width: 100%; height: 100%; background: #f9fafb; border: none; }
+        #fixed-backup-btn {
+            position: fixed; left: 10px; top: 80px; z-index: 99999; padding: 8px 16px;
+            background: #6366f1; color: white; border-radius: 20px; cursor: pointer;
+            font-weight: bold; box-shadow: 0 4px 12px rgba(99,102,241,0.4); display: none;
+        }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="fixed-backup-btn" onclick="toggleProView(true)">🚀 Sora Pro</div>
+
+    <script>
+    (function() {
+        const PRO_TITLE = "Sora Pro (高级版)";
+        let appMainContainer = null;
+        let proIframe = null;
+        let lastUrl = window.location.href;
+
+        function isLoginPage() {
+            if (window.location.href.includes('/login') || window.location.hash.includes('/login')) return true;
+            if (document.querySelector('.login-container') || document.querySelector('.login-card')) return true;
+            return false;
+        }
+
+        function hideLegacyFeatures() {
+            const allElements = document.querySelectorAll('li, .menu-item, span');
+            allElements.forEach(el => {
+                if (el.innerText && (el.innerText.includes('水印') || el.innerText.includes('Watermark'))) {
+                    const item = el.closest('li') || el.closest('.menu-item');
+                    if (item) item.classList.add('hidden-feature');
+                }
+            });
+        }
+
+        window.toggleProView = function(show) {
+            if (isLoginPage()) return;
+            if (!appMainContainer) {
+                const mains = Array.from(document.querySelectorAll('main, section, .app-main, .main-container'));
+                appMainContainer = mains.find(el => el.clientWidth > 300) || document.querySelector('#app > div > div:last-child');
+            }
+            if (!appMainContainer) return window.location.href = '/studio';
+
+            if (!proIframe) {
+                proIframe = document.createElement('iframe');
+                proIframe.id = 'sora-pro-view-container';
+                proIframe.src = '/studio';
+                appMainContainer.parentNode.appendChild(proIframe);
+            }
+
+            const menuLi = document.getElementById('sora-pro-li');
+            if (show) {
+                appMainContainer.style.display = 'none';
+                proIframe.style.display = 'block';
+                document.querySelectorAll('.is-active, .router-link-active').forEach(el => el.classList.remove('is-active', 'router-link-active'));
+                if(menuLi) menuLi.classList.add('active');
+            } else {
+                appMainContainer.style.display = '';
+                proIframe.style.display = 'none';
+                if(menuLi) menuLi.classList.remove('active');
+            }
+        };
+
+        function injectSidebar() {
+            if (isLoginPage()) {
+                const existLi = document.getElementById('sora-pro-li');
+                const existBtn = document.getElementById('fixed-backup-btn');
+                if (existLi) existLi.style.display = 'none';
+                if (existBtn) existBtn.style.display = 'none';
+                return;
+            }
+
+            hideLegacyFeatures();
+
+            const existLi = document.getElementById('sora-pro-li');
+            if (existLi) { existLi.style.display = 'flex'; return; }
+
+            const potentialSidebars = Array.from(document.querySelectorAll('ul, div[class*="menu"]'));
+            const sidebar = potentialSidebars.find(el => {
+                const rect = el.getBoundingClientRect();
+                return rect.left < 50 && rect.width > 100 && rect.width < 300 && el.querySelectorAll('li').length > 0;
+            });
+
+            if (sidebar) {
+                const li = document.createElement('li');
+                li.id = 'sora-pro-li';
+                li.className = 'sora-pro-sidebar-item';
+                li.innerHTML = `<span style="font-size:18px; margin-right:10px">🚀</span><span>${PRO_TITLE}</span>`;
+                li.onclick = (e) => { e.preventDefault(); e.stopPropagation(); window.toggleProView(true); };
+
+                if (sidebar.firstChild) sidebar.insertBefore(li, sidebar.firstChild);
+                else sidebar.appendChild(li);
+                
+                document.getElementById('fixed-backup-btn').style.display = 'none';
+
+                sidebar.addEventListener('click', function(e) {
+                    const clickedItem = e.target.closest('li') || e.target.closest('.menu-item');
+                    if (clickedItem && clickedItem.id !== 'sora-pro-li') window.toggleProView(false);
+                }, true);
+            } else {
+                const hasMainContent = document.querySelector('main') || document.querySelector('#app');
+                if (hasMainContent && !isLoginPage()) {
+                    if(!document.getElementById('sora-pro-li')) document.getElementById('fixed-backup-btn').style.display = 'flex';
+                } else {
+                    document.getElementById('fixed-backup-btn').style.display = 'none';
+                }
+            }
+        }
+
+        setInterval(() => {
+            if (window.location.href !== lastUrl) {
+                lastUrl = window.location.href;
+                window.toggleProView(false);
+                injectSidebar();
+            }
+        }, 300);
+
+        setInterval(injectSidebar, 800);
+    })();
+    </script>
   </body>
 </html>

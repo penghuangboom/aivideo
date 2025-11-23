@@ -1,0 +1,94 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password": "123",
+      "display_name": "管理员",
+      "role": 100,
+      "status": 1,
+      "quota": 999999,
+      "used_quota": 0,
+      "group": "vip"
+    }
+  ],
+  "tokens": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "key": "sk-test-123456",
+      "name": "测试令牌",
+      "remain_quota": 500000,
+      "status": 1
+    }
+  ],
+  "tasks": [
+    {
+      "id": "518f99cf2a51b30045f7be26228d898c",
+      "status": "processing",
+      "created_at": 1763816784654,
+      "model": "sora-2-text-to-video"
+    },
+    {
+      "id": "1afdff430cce6551cfb5c2629fa38acf",
+      "status": "processing",
+      "created_at": 1763813832146,
+      "model": "sora-2-text-to-video"
+    },
+    {
+      "id": "5cd8a423f433ecde7e9ab0a44b5d9a7a",
+      "local_created_at": 1763692766340,
+      "status": "succeeded",
+      "prompt": "沙滩美女",
+      "model": "sora-2-text-to-video",
+      "aspect_ratio": "landscape",
+      "result_url": "https://tempfile.aiquickdraw.com/f/5cd8a423f433ecde7e9ab0a44b5d9a7a/179e402b-d630-4eb2-a630-435d54e701dc.mp4",
+      "cover_url": "https://tempfile.aiquickdraw.com/f/5cd8a423f433ecde7e9ab0a44b5d9a7a/179e402b-d630-4eb2-a630-435d54e701dc.mp4"
+    },
+    {
+      "id": "fa8550578b7cd95ba95c6d1de63243ed",
+      "local_created_at": 1763689789354,
+      "status": "succeeded",
+      "prompt": "ASMR macro shot: A gloved hand holding a silver tweezers with asmall piece of white metal in it gently uses the tweezers to place themetal above a round petri dish filled with glittering silver powder.When the white metal is placed in the petri dish, the metal bloomsoutwards, and red crystals grow out of the petri dish. The soft metalclicks, the sound of crystals colliding, and the pleasant ripples andpops together create a dreamy atmosphere.",
+      "model": "sora-2-text-to-video",
+      "result_url": "https://tempfile.aiquickdraw.com/f/fa8550578b7cd95ba95c6d1de63243ed/877498e7-0991-41d3-8349-059f69b2ba3a.mp4",
+      "cover_url": "https://tempfile.aiquickdraw.com/f/fa8550578b7cd95ba95c6d1de63243ed/877498e7-0991-41d3-8349-059f69b2ba3a.mp4"
+    },
+    {
+      "id": "e2105843010bbdebdc57275427ce0ed3",
+      "local_created_at": 1763617920911,
+      "status": "succeeded",
+      "prompt": "开飞机的猫猫",
+      "model": "sora-2-text-to-video",
+      "result_url": "https://tempfile.aiquickdraw.com/f/e2105843010bbdebdc57275427ce0ed3/c047363e-d188-4377-ac9f-9163992ff2fa.mp4",
+      "cover_url": "https://tempfile.aiquickdraw.com/f/e2105843010bbdebdc57275427ce0ed3/c047363e-d188-4377-ac9f-9163992ff2fa.mp4"
+    },
+    {
+      "id": "c4f4050c74d3fb0e8bd65a4c48928e95",
+      "local_created_at": 1763556982088,
+      "status": "succeeded",
+      "prompt": "飞机狗",
+      "model": "sora-2-text-to-video",
+      "result_url": "https://tempfile.aiquickdraw.com/f/c4f4050c74d3fb0e8bd65a4c48928e95/553181bb-2274-46c6-9cc5-0e9868381e5a.mp4",
+      "cover_url": "https://tempfile.aiquickdraw.com/f/c4f4050c74d3fb0e8bd65a4c48928e95/553181bb-2274-46c6-9cc5-0e9868381e5a.mp4"
+    },
+    {
+      "id": 1763554801889,
+      "created_at": 1763554801,
+      "status": "succeeded",
+      "prompt": "11",
+      "model": "sora-1.0-turbo",
+      "result_url": "https://www.w3schools.com/html/mov_bbb.mp4",
+      "cover_url": "https://via.placeholder.com/800x450?text=AI+Video+Generated"
+    }
+  ],
+  "system_status": {
+    "HeaderNavModules": "{\"home\":true,\"console\":true,\"pricing\":{\"enabled\":true,\"requireAuth\":false},\"docs\":false,\"about\":false}",
+    "SidebarModulesAdmin": "{\"chat\":{\"enabled\":false,\"playground\":false,\"chat\":true},\"console\":{\"enabled\":true,\"detail\":true,\"token\":true,\"log\":true,\"midjourney\":false,\"task\":true},\"personal\":{\"enabled\":true,\"topup\":true,\"personal\":true},\"admin\":{\"enabled\":true,\"channel\":true,\"models\":true,\"redemption\":true,\"user\":true,\"setting\":true}}",
+    "system_name": "AI 视频创作平台 (本地版)",
+    "version": "v1.0.0",
+    "footer_html": "Powered by Local Server",
+    "quota_per_unit": 500000,
+    "display_in_currency": true
+  }
+}
